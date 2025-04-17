@@ -134,5 +134,9 @@ dates = pd.Series(blocks.index).groupby(blocks.to_list()).first()
 plt.scatter(dates.loc[gaps.index], gaps)
 plt.show()
 
+dm_temp = pd.read_csv("data/temperature.csv")
 
-dfnew.join(sf, how="outer").to_csv("data/combined-all.csv")
+temp = dm_temp.Temperature
+temp.index = pd.to_datetime(dm_temp.date)
+
+dfnew.join(sf, how="outer").join(temp, how="left").to_csv("data/combined-all.csv")

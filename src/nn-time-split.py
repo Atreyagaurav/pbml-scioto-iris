@@ -22,13 +22,16 @@ df = df_org.copy(deep=True)
 sf_org = df.pop("streamflow")
 sf = sf_org.copy(deep=True)
 
+temp = pd.read_csv("data/temp.csv", index_col="date").iloc[:, 0]
+temp.index = pd.to_datetime(temp.index)
+
 trend = sf_org.rolling(24, center=False).mean()
 # s2 = (sf - trend)
 s2 = sf
 
-y_mean = np.mean(sf)
-y_std = np.std(sf)
-sf_norm = lambda f: (f - y_mean)/y_std
+temp_mean = np.mean(temp)
+temp_std = np.std(temp)
+temp_norm = lambda f: (f - temp_mean)/temp_std
 
 y_mean = np.mean(s2)
 y_std = np.std(s2)
@@ -67,6 +70,14 @@ sf_lag_24_24 = sf.shift(24).rolling(24).mean().map(sf_norm)
 df = df.join(sf_lag_24, rsuffix="sf_l24")
 df = df.join(sf_lag_24_06, rsuffix="sf_l24_06")
 df = df.join(sf_lag_24_24, rsuffix="sf_l24_24")
+
+temp_rol_06 = temp.rolling(6).mean().map(temp_norm)
+temp_rol_24 = temp.rolling(24).mean().map(temp_norm)
+temp_rol_48_04 = temp.rolling(48*4).mean().map(temp_norm)
+
+df = df.join(temp_rol_06, rsuffix="temp_r06")
+df = df.join(temp_rol_24, rsuffix="temp_r24")
+df = df.join(temp_rol_48_04, rsuffix="temp_r48_04")
 
 # seasonality and day of time proxy
 numdays = pd.Series(df.index.is_leap_year).map({True: 366, False: 365})

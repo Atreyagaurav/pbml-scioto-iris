@@ -73,6 +73,23 @@ The `src/clustering.py` file has the code for clustering of the precipitation st
 
 ![Knee Locator](./images/knee.png)
 
+## Variable Selection
+Running a Simple Multivariate normal regression, we can see which inputs have impact on the output.
+
+Here, we ran a multivariate normal regression using bayesian hierarchical model. Looking at different rolling means of the groups and their relation with the streamflow. And their coefficients, we can see the following:
+
+![Variable Selection](./images/img-all.png)
+
+Here, green titles are statistically significant and gray ones are not. The dashed vertical line shows zero, and we can see whether the posterior includes zero or not visually as well. We can use this information to reduce the number of variables we use for the machine learning.
+
+On that note, running the simple linear regression gives us the r-squared around 0.86 on both training and testing datasets. The plot below shows only the testing dataset, it is underpredicting the floods.
+
+![Results of Linear Regression](./images/multi-linear.png)
+
+We want our machine learning model to do better than this.
+
+## Neural Network
+TODO
 
 # Future Steps
 
