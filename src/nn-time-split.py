@@ -20,14 +20,14 @@ import matplotlib
 # from airt.keras.layers import MonoDense
 
 import matplotlib.pyplot as plt
-from helper_funcs import *
+from src.helper_funcs import *
 
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = "." # os.path.dirname(os.path.abspath(__file__))
 
 precip_fields = ['group_0','group_1','group_2','group_3']
 endogenous_fields = ["streamflow"]
 
-df_org = pd.read_csv(os.path.join(HERE, "../data/combined-all.csv"), index_col="datetime", parse_dates=True)
+df_org = pd.read_csv(os.path.join(HERE, "data/combined-all.csv"), index_col="datetime", parse_dates=True)
 df = df_org.copy(deep=True)
 
 trend = df[endogenous_fields].rolling(pd.Timedelta(hours=24), center=True).mean()
@@ -35,16 +35,12 @@ trend = df[endogenous_fields].rolling(pd.Timedelta(hours=24), center=True).mean(
 new_columns = {}
 
 for field in precip_fields:
-    new_columns[f'{field}_3h'] = df[field].rolling(pd.Timedelta(hours=3)).sum()
-    new_columns[f'{field}_6h'] = df[field].rolling(pd.Timedelta(hours=6)).sum()
-    new_columns[f'{field}_9h'] = df[field].rolling(pd.Timedelta(hours=9)).sum()
-    new_columns[f'{field}_12h'] = df[field].rolling(pd.Timedelta(hours=12)).sum()
-    new_columns[f'{field}_24h'] = df[field].rolling(pd.Timedelta(hours=24)).sum()
-    new_columns[f'{field}_48h'] = df[field].rolling(pd.Timedelta(hours=48)).sum()
-    new_columns[f'{field}_72h'] = df[field].rolling(pd.Timedelta(hours=72)).sum()
-    new_columns[f'{field}_14d'] = df[field].rolling(pd.Timedelta(days=14)).sum()
-    new_columns[f'{field}_30d'] = df[field].rolling(pd.Timedelta(days=30)).sum()
-    new_columns[f'{field}_60d'] = df[field].rolling(pd.Timedelta(days=60)).sum()
+    for hr in [3, 6, 9, 12, 24, 48, 72]:
+        for sft in [0, 3, 6, 12, 24]:
+            new_columns[f'{field}_{hr}h_{sft}l'] = df[field].rolling(pd.Timedelta(hours=hr)).sum().shift(sft)
+    for dy in [7, 14, 30, 60]:
+        for sft in [0, 7, 14]:
+            new_columns[f'{field}_{dy}d_{sft}l'] = df[field].rolling(pd.Timedelta(days=dy)).sum().shift(sft*24)
 
 # Add all new columns to the DataFrame at once
 df = pd.concat([df, pd.DataFrame(new_columns, index=df.index)], axis=1)
@@ -182,7 +178,7 @@ hist = model.fit(
             update_freq="batch"
         ),
         callbacks.ModelCheckpoint(
-            os.path.join(HERE, "model.h5"), save_best_only=True
+            os.path.join(HERE, "model.keras"), save_best_only=True
         ),
         callbacks.TerminateOnNaN(),
     ],
@@ -200,88 +196,32 @@ y_test_pred = model.predict(x_test.values[:, np.newaxis, ...])
 y_train_pred = tfp.distributions.Normal(loc=y_train_pred[..., 0, 0], scale=y_train_pred[..., 0 , 1])
 y_test_pred = tfp.distributions.Normal(loc=y_test_pred[..., 0, 0], scale=y_test_pred[..., 0 , 1])
 
+y_train_scaled = scalar_y.inverse_transform(y_train)
+y_test_scaled = scalar_y.inverse_transform(y_test)
+
 y_train_pred_scaled = scalar_y.inverse_transform(y_train_pred.mean().numpy()[..., np.newaxis])
 y_test_pred_scaled = scalar_y.inverse_transform(y_test_pred.mean().numpy()[..., np.newaxis])
 
 
-concat_all_y = np.concatenate([y_train, y_train_pred_scaled, y_test_pred_scaled, y_test])
+concat_all_y = np.concatenate([y_train_scaled, y_train_pred_scaled, y_test_pred_scaled, y_test_scaled])
 
 min_y = np.min(concat_all_y)
 max_y = np.max(concat_all_y)
-plt.scatter(y_train, y_train_pred_scaled, label="train", s=0.2)
-plt.scatter(y_test, y_test_pred_scaled, label="test", s=0.2)
-plt.plot([min_y, max_y], [min_y, max_y], label="1:1", c="red")
+plt.scatter(y_train_scaled, y_train_pred_scaled, label="train", s=0.2)
+plt.scatter(y_test_scaled, y_test_pred_scaled, label="test", s=0.2)
+# plt.plot([min_y, max_y], [min_y, max_y], label="1:1", c="red")
 plt.legend()
 plt.xlabel("Observed Flow (cfs)")
 plt.ylabel("Simulated Flow (cfs)")
 matplotlib.use('TkAgg')
 plt.show()
 
-obs = pd.concat([
-    pd.Series(y_train_val, index=traindt),
-    pd.Series(y_test_val, index=testdt)
-])
-sim = pd.concat([
-    pd.Series(y_train_pred_val, index=traindt),
-    pd.Series(y_test_pred_val, index=testdt)
-])
 
-# obs = obs + trend[obs.index]
-# sim = sim + trend[obs.index]
-
-AGG_DAILY = False
-# if we want to see aggregates
-if AGG_DAILY:
-    obs = obs.resample("1d").mean().dropna()
-    sim = sim.resample("1d").mean().dropna()
-
-# result = pd.DataFrame(dict(observed=obs, simulated=sim))
-
-
-# def category(dt):
-#     if dt < split2dt:
-#         return "train"
-#     elif dt < splitdt:
-#         return "test"
-#     return "validation"
-
-
-# result.loc[:, "category"] = result.index.map(category)
-# result.loc[:, "trend"] = trend
-# result.to_csv(f"pbml-results{'-daily' if AGG_DAILY else ''}.csv")
-
-# sns.lineplot(sf)
-# sns.scatterplot(result, x = "datetime", y="observed", hue="category")
-fig, ax1 = plt.subplots() # initializes figure and plots
-ax2 = ax1.twinx()
-
-sns.lineplot(result, x="datetime", y="observed", hue="category", ax=ax1)
-sns.lineplot(trend.reset_index(), x="datetime", y="streamflow", ax=ax1, dashes=[2, 2], label="trend", color="green")
-sns.scatterplot(result, x="datetime", y="simulated", color="red", ax=ax1)
-mean_precip = df_org.iloc[:, :-1].mean(axis=1)
-mean_precip.name = "precip"
-# sns.barplot(pd.DataFrame(mean_precip), x="datetime", y="precip")
+plt.plot(np.concatenate([y_train_scaled, y_test_scaled]), label="observed")
+plt.plot(np.concatenate([y_train_pred_scaled, y_test_pred_scaled]), label="predicted")
+# plt.plot([min_y, max_y], [min_y, max_y], label="1:1", c="red")
+plt.legend()
+plt.xlabel("Observed Flow (cfs)")
+plt.ylabel("Simulated Flow (cfs)")
+matplotlib.use('TkAgg')
 plt.show()
-
-
-sea = sns.FacetGrid(result, col="category")
-sea.map(sns.scatterplot, "observed", "simulated", alpha=.8, color=None)
-plt.show()
-
-trainx = result.observed.loc[result.category == "train"]
-trainy = result.simulated.loc[result.category == "train"]
-testx = result.observed.loc[result.category == "test"]
-testy = result.simulated.loc[result.category == "test"]
-validx = result.observed.loc[result.category == "validation"]
-validy = result.simulated.loc[result.category == "validation"]
-
-high_threshold = result.observed.quantile(0.99)
-
-# pd.DataFrame(dict(
-#     train=errors(trainx, trainy),
-#     test=errors(testx, testy),
-#     valid=errors(validx, validy),
-#     train_high=errors(trainx.loc[trainx > high_threshold], trainy.loc[trainx > high_threshold]),
-#     test_high=errors(testx.loc[testx > high_threshold], testy.loc[testx > high_threshold]),
-#     valid_high=errors(validx.loc[validx > high_threshold], validy.loc[validx > high_threshold]),
-# )).T
